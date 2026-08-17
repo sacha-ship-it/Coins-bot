@@ -8,8 +8,9 @@ const LEADERBOARD_CHANNEL_ID = process.env.LEADERBOARD_CHANNEL_ID
 const SAVE_CHANNEL_ID = process.env.SAVE_CHANNEL_ID
 const CURRENCY_NAME = process.env.CURRENCY_NAME || "Coins"
 const CURRENCY_EMOJI = process.env.CURRENCY_EMOJI || "🪙"
-const COLOR = process.env.COLOR || "#FFD700"
 const SERVER_NAME = process.env.SERVER_NAME || "Serveur"
+const RAW_COLOR = process.env.COLOR || "#FFD700"
+const COLOR = RAW_COLOR.startsWith("#") ? RAW_COLOR : "#FFD700"
 
 const client = new Client({
   intents: [
@@ -24,10 +25,6 @@ let userData = {}
 let quests = {}
 let saveMessageId = null
 let leaderboardMessageId = null
-
-// ─────────────────────────────────────────
-// SAUVEGARDE / CHARGEMENT
-// ─────────────────────────────────────────
 
 async function saveData() {
   try {
@@ -63,10 +60,6 @@ async function loadData() {
   }
 }
 
-// ─────────────────────────────────────────
-// CLASSEMENT
-// ─────────────────────────────────────────
-
 function getSortedLeaderboard() {
   return Object.entries(userData).sort((a, b) => b[1].coins - a[1].coins)
 }
@@ -80,7 +73,7 @@ async function updateLeaderboard() {
     const classement = sorted.length
       ? sorted.map(([id, data], i) => {
           const rank = medals[i] || (i + 1) + "."
-          return `${rank} <@${id}> — **${data.coins} ${CURRENCY_EMOJI}** | ${data.xp} XP`
+          return `${rank} <@${id}> — **${data.coins} ${CURRENCY_EMOJI}** | ⭐ ${data.xp} XP`
         }).join("\n")
       : "Aucun participant pour le moment."
 
@@ -116,10 +109,6 @@ async function updateLeaderboard() {
   }
 }
 
-// ─────────────────────────────────────────
-// QUÊTES — DÉTECTION IMAGE AUTOMATIQUE
-// ─────────────────────────────────────────
-
 client.on("messageCreate", async msg => {
   if (msg.author.bot || !msg.guild) return
   if (!msg.attachments.size) return
@@ -137,9 +126,8 @@ client.on("messageCreate", async msg => {
   if (quest.once && userData[userId].completedQuests.includes(msg.channelId)) {
     await msg.reply({
       embeds: [new EmbedBuilder()
-        .setDescription(`Tu as deja complete cette quete ! Reviens a la prochaine 👀`)
-        .setColor(COLOR)],
-      ephemeral: false
+        .setDescription("Tu as deja complete cette quete ! Reviens a la prochaine 👀")
+        .setColor(COLOR)]
     })
     return
   }
@@ -155,22 +143,22 @@ client.on("messageCreate", async msg => {
   await saveData()
 
   const embed = new EmbedBuilder()
-    .setTitle(`${CURRENCY_EMOJI} Quete validee !`)
+    .setTitle(`${CURRENCY_EMOJI} Quete validee — ${quest.name} !`)
     .setDescription(
-      `**${quest.name}** completee avec succes !\n\n` +
+      `Bien joue <@${userId}> 🎉\n\n` +
       `${CURRENCY_EMOJI} **+${quest.coins} ${CURRENCY_NAME}**\n` +
       `⭐ **+${quest.xp} XP**\n\n` +
-      `Total : **${userData[userId].coins} ${CURRENCY_NAME}** | **${userData[userId].xp} XP**`
+      `**Ton total :**\n` +
+      `${CURRENCY_EMOJI} ${userData[userId].coins} ${CURRENCY_NAME} | ⭐ ${userData[userId].xp} XP`
     )
     .setColor(COLOR)
-    .setThumbnail(msg.author.displayAvatarURL())
+    .setThumbnail(msg.author.displayAvatarURL({ dynamic: true, size: 128 }))
+    .setImage(msg.attachments.first()?.url || null)
+    .setFooter({ text: SERVER_NAME, iconURL: msg.guild.iconURL({ dynamic: true }) || undefined })
+    .setTimestamp()
 
   await msg.reply({ embeds: [embed] })
 })
-
-// ─────────────────────────────────────────
-// COMMANDES
-// ─────────────────────────────────────────
 
 async function registerCommands() {
   const commands = [
@@ -201,7 +189,7 @@ async function registerCommands() {
       .setDescription("Ajoute des coins a un membre (admin)")
       .addUserOption(o => o.setName("membre").setDescription("Membre").setRequired(true))
       .addIntegerOption(o => o.setName("montant").setDescription("Nombre de coins").setRequired(true))
-      .addStringOption(o => o.setName("raison").setDescription("Raison (bonus quete, concours...)").setRequired(false)),
+      .addStringOption(o => o.setName("raison").setDescription("Raison").setRequired(false)),
 
     new SlashCommandBuilder()
       .setName("addxp")
@@ -226,10 +214,6 @@ async function registerCommands() {
   console.log("Commandes enregistrees")
 }
 
-// ─────────────────────────────────────────
-// READY
-// ─────────────────────────────────────────
-
 client.on("ready", async () => {
   console.log("Bot connecte : " + client.user.tag)
   await registerCommands()
@@ -237,13 +221,8 @@ client.on("ready", async () => {
   cron.schedule("0 */6 * * *", updateLeaderboard, { timezone: "Europe/Paris" })
 })
 
-// ─────────────────────────────────────────
-// INTERACTIONS
-// ─────────────────────────────────────────
-
 client.on("interactionCreate", async interaction => {
 
-  // BOUTON MON CLASSEMENT
   if (interaction.isButton() && interaction.customId === "check_rank") {
     const userId = interaction.user.id
     const sorted = getSortedLeaderboard()
@@ -266,13 +245,11 @@ client.on("interactionCreate", async interaction => {
 
   const isAdmin = interaction.member.permissions.has("Administrator")
 
-  // SETUP
   if (interaction.commandName === "setup") {
     await updateLeaderboard()
     await interaction.reply({ content: "Classement poste ! Il se met a jour toutes les 6h.", ephemeral: true })
   }
 
-  // CREATE QUETE
   if (interaction.commandName === "createquete") {
     if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
 
@@ -294,7 +271,6 @@ client.on("interactionCreate", async interaction => {
     })
   }
 
-  // DELETE QUETE
   if (interaction.commandName === "deletequete") {
     if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
 
@@ -306,7 +282,6 @@ client.on("interactionCreate", async interaction => {
     await interaction.reply({ content: `Quete supprimee dans <#${canal.id}>`, ephemeral: true })
   }
 
-  // LIST QUETES
   if (interaction.commandName === "listquetes") {
     const list = Object.entries(quests)
     if (!list.length) return interaction.reply({ content: "Aucune quete active.", ephemeral: true })
@@ -322,7 +297,6 @@ client.on("interactionCreate", async interaction => {
     })
   }
 
-  // ADD COINS
   if (interaction.commandName === "addcoins") {
     if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
 
@@ -345,7 +319,6 @@ client.on("interactionCreate", async interaction => {
     })
   }
 
-  // ADD XP
   if (interaction.commandName === "addxp") {
     if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
 
@@ -367,7 +340,6 @@ client.on("interactionCreate", async interaction => {
     })
   }
 
-  // MES COINS
   if (interaction.commandName === "mescoins") {
     const userId = interaction.user.id
     const data = userData[userId]
@@ -383,12 +355,11 @@ client.on("interactionCreate", async interaction => {
           `📊 Classement : **#${rank || "?"}**`
         )
         .setColor(COLOR)
-        .setThumbnail(interaction.user.displayAvatarURL())],
+        .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 128 }))],
       ephemeral: true
     })
   }
 
-  // RESET MEMBRE
   if (interaction.commandName === "resetmembre") {
     if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
 
