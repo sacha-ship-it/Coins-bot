@@ -9,8 +9,8 @@ const SAVE_CHANNEL_ID = process.env.SAVE_CHANNEL_ID
 const CURRENCY_NAME = process.env.CURRENCY_NAME || "Coins"
 const CURRENCY_EMOJI = process.env.CURRENCY_EMOJI || "🪙"
 const SERVER_NAME = process.env.SERVER_NAME || "Serveur"
-const RAW_COLOR = process.env.COLOR || "#FFD700"
-const COLOR = RAW_COLOR.startsWith("#") ? RAW_COLOR : "#FFD700"
+
+let COLOR = "#FFD700"
 
 const client = new Client({
   intents: [
@@ -29,7 +29,7 @@ let leaderboardMessageId = null
 async function saveData() {
   try {
     const channel = await client.channels.fetch(SAVE_CHANNEL_ID)
-    const content = "COINSDATA:" + JSON.stringify({ userData, quests, leaderboardMessageId })
+    const content = "COINSDATA:" + JSON.stringify({ userData, quests, leaderboardMessageId, COLOR })
     if (saveMessageId) {
       const msg = await channel.messages.fetch(saveMessageId)
       await msg.edit(content)
@@ -52,6 +52,7 @@ async function loadData() {
       userData = parsed.userData || {}
       quests = parsed.quests || {}
       leaderboardMessageId = parsed.leaderboardMessageId || null
+      if (parsed.COLOR) COLOR = parsed.COLOR
       saveMessageId = dataMsg.id
       console.log("Donnees chargees")
     }
@@ -167,6 +168,11 @@ async function registerCommands() {
       .setDescription("Poste le classement dans le canal dedie"),
 
     new SlashCommandBuilder()
+      .setName("setcolor")
+      .setDescription("Change la couleur du bot (admin)")
+      .addStringOption(o => o.setName("couleur").setDescription("Couleur hex sans # (ex: FFD700)").setRequired(true)),
+
+    new SlashCommandBuilder()
       .setName("createquete")
       .setDescription("Cree une quete dans un canal (admin)")
       .addChannelOption(o => o.setName("canal").setDescription("Canal de la quete").setRequired(true))
@@ -248,6 +254,14 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "setup") {
     await updateLeaderboard()
     await interaction.reply({ content: "Classement poste ! Il se met a jour toutes les 6h.", ephemeral: true })
+  }
+
+  if (interaction.commandName === "setcolor") {
+    if (!isAdmin) return interaction.reply({ content: "Permission refusee.", ephemeral: true })
+    const couleur = interaction.options.getString("couleur").replace("#", "")
+    COLOR = "#" + couleur
+    await saveData()
+    await interaction.reply({ content: `Couleur mise a jour : **${COLOR}**`, ephemeral: true })
   }
 
   if (interaction.commandName === "createquete") {
