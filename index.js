@@ -175,7 +175,7 @@ async function registerCommands() {
     new SlashCommandBuilder()
       .setName("createquete")
       .setDescription("Cree une quete dans un canal (admin)")
-      .addChannelOption(o => o.setName("canal").setDescription("Canal de la quete").setRequired(true))
+      .addChannelOption(o => o.setName("canal").setDescription("Canal forum de la quete").setRequired(true))
       .addStringOption(o => o.setName("nom").setDescription("Nom de la quete").setRequired(true))
       .addIntegerOption(o => o.setName("coins").setDescription("Coins a gagner").setRequired(true))
       .addIntegerOption(o => o.setName("xp").setDescription("XP a gagner").setRequired(true))
@@ -273,14 +273,35 @@ client.on("interactionCreate", async interaction => {
     const xp = interaction.options.getInteger("xp")
     const once = interaction.options.getBoolean("once") ?? false
 
-    quests[canal.id] = { name: nom, coins, xp, once }
-    await saveData()
+    const questEmbed = new EmbedBuilder()
+      .setTitle(`${CURRENCY_EMOJI} ${nom}`)
+      .setDescription(
+        `**Comment participer :**\nPoste une image dans ce fil pour valider la quete 👇\n\n` +
+        `${CURRENCY_EMOJI} **+${coins} ${CURRENCY_NAME}**\n` +
+        `⭐ **+${xp} XP**\n\n` +
+        `${once ? "⚠️ Une seule participation par membre" : "✅ Participations illimitees"}`
+      )
+      .setColor(COLOR)
+      .setTimestamp()
+
+    try {
+      if (canal.type === 15) {
+        const thread = await canal.threads.create({
+          name: nom,
+          message: { embeds: [questEmbed] }
+        })
+        quests[thread.id] = { name: nom, coins, xp, once }
+      } else {
+        await canal.send({ embeds: [questEmbed] })
+        quests[canal.id] = { name: nom, coins, xp, once }
+      }
+      await saveData()
+    } catch (e) {
+      console.error("Erreur envoi quete:", e.message)
+    }
 
     await interaction.reply({
-      embeds: [new EmbedBuilder()
-        .setTitle("Quete creee !")
-        .setDescription(`**${nom}** dans <#${canal.id}>\n${CURRENCY_EMOJI} **+${coins} ${CURRENCY_NAME}** | ⭐ **+${xp} XP**\nParticipation unique : ${once ? "Oui" : "Non"}`)
-        .setColor(COLOR)],
+      content: `Quete **${nom}** creee et postee dans <#${canal.id}> !`,
       ephemeral: true
     })
   }
